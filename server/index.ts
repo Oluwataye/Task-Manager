@@ -9,6 +9,7 @@ import userRoutes from './routes/users.js';
 import settingsRoutes from './routes/settings.js';
 import domainRoutes from './routes/domain.js';
 import reportRoutes from './routes/reports.js';
+import { ensureSeed } from './lib/ensureSeed.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,6 +22,16 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Auto-seed check middleware for cloud/serverless deployments
+let seedChecked = false;
+app.use(async (_req, _res, next) => {
+  if (!seedChecked) {
+    seedChecked = true;
+    await ensureSeed();
+  }
+  next();
+});
 
 // Serve static uploads
 const uploadsDir = path.resolve('uploads');
@@ -44,3 +55,7 @@ app.get('/api/health', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Task Monitoring System API Server running on http://localhost:${PORT}`);
 });
+
+export default app;
+export { app };
+
