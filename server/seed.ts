@@ -1,4 +1,9 @@
 import bcrypt from 'bcryptjs';
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'file:./dev.db';
+}
+
 import { prisma } from './lib/prisma.js';
 
 async function seed() {
