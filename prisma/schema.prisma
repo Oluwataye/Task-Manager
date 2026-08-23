@@ -1,0 +1,131 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id             String     @id @default(uuid())
+  name           String     @default("Your Company Name")
+  systemName     String     @default("Task Monitoring System")
+  tagline        String     @default("Track, assign, and monitor employee tasks in real-time")
+  logoUrl        String?
+  primaryColor   String     @default("#123C73")
+  secondaryColor String     @default("#1B4B82")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  users          User[]
+  tasks          Task[]
+  properties     Property[]
+  projects       Project[]
+  assets         Asset[]
+  invoices       Invoice[]
+}
+
+model User {
+  id           String     @id @default(uuid())
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fullName     String
+  email        String     @unique
+  passwordHash String
+  photoUrl     String?
+  role         String     @default("STAFF") // SUPER_ADMIN, COMPANY_ADMIN, PROPERTY_MANAGER, PROJECT_MANAGER, FACILITIES_MANAGER, FINANCE_OFFICER, STAFF, CONTRACTOR_TENANT
+  status       String     @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  createdTasks Task[]         @relation("CreatedTasks")
+  assignments  TaskAssignee[]
+}
+
+model Task {
+  id             String    @id @default(uuid())
+  companyId      String
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  linkOrFile     String?
+  priority       String    @default("MEDIUM") // LOW, MEDIUM, HIGH
+  status         String    @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, ON_HOLD, COMPLETED, CANCELLED
+  dueDate        DateTime?
+  startDate      DateTime?
+  completionDate DateTime?
+  notes          String?
+  createdById    String
+  createdBy      User      @relation("CreatedTasks", fields: [createdById], references: [id])
+  
+  propertyId     String?
+  property       Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  projectId      String?
+  project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  assetId        String?
+  asset          Asset?    @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  invoiceId      String?
+  invoice        Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  assignees      TaskAssignee[]
+}
+
+model TaskAssignee {
+  taskId String
+  userId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+model Property {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  tasks     Task[]
+  projects  Project[]
+  assets    Asset[]
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id         String    @id @default(uuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name       String
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  tasks      Task[]
+  createdAt  DateTime  @default(now())
+}
+
+model Asset {
+  id              String    @id @default(uuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name            String
+  maintenanceType String?   @default("Routine")
+  propertyId      String?
+  property        Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  tasks           Task[]
+  createdAt       DateTime  @default(now())
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoiceNumber String
+  amount        Float
+  status        String   @default("UNPAID") // UNPAID, PAID, OVERDUE
+  dueDate       DateTime
+  tasks         Task[]
+  createdAt     DateTime @default(now())
+}
