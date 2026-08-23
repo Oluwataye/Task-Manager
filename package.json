@@ -8,6 +8,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:vite": "vite",
     "build": "prisma db push && prisma generate && tsx server/seed.ts && tsc && vite build",
+    "build:netlify": "tsc && vite build",
     "db:push": "prisma db push",
     "db:seed": "tsx server/seed.ts"
   },

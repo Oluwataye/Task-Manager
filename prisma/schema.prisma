@@ -34,8 +34,8 @@ model User {
   email        String     @unique
   passwordHash String
   photoUrl     String?
-  role         String     @default("STAFF") // SUPER_ADMIN, COMPANY_ADMIN, PROPERTY_MANAGER, PROJECT_MANAGER, FACILITIES_MANAGER, FINANCE_OFFICER, STAFF, CONTRACTOR_TENANT
-  status       String     @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+  role         String     @default("STAFF")
+  status       String     @default("ACTIVE")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -50,8 +50,8 @@ model Task {
   name           String
   description    String?
   linkOrFile     String?
-  priority       String    @default("MEDIUM") // LOW, MEDIUM, HIGH
-  status         String    @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, ON_HOLD, COMPLETED, CANCELLED
+  priority       String    @default("MEDIUM")
+  status         String    @default("NOT_STARTED")
   dueDate        DateTime?
   startDate      DateTime?
   completionDate DateTime?
@@ -124,7 +124,7 @@ model Invoice {
   company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   invoiceNumber String
   amount        Float
-  status        String   @default("UNPAID") // UNPAID, PAID, OVERDUE
+  status        String   @default("UNPAID")
   dueDate       DateTime
   tasks         Task[]
   createdAt     DateTime @default(now())
