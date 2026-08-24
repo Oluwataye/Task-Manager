@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Task, User, TaskPriority, TaskStatus } from '../../types';
 import { apiRequest } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   onSuccess,
   taskToEdit,
 }) => {
+  const { company } = useAuth();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [linkOrFile, setLinkOrFile] = useState('');
@@ -266,9 +268,14 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   onChange={(e) => setPriority(e.target.value as TaskPriority)}
                   className="w-full pl-12 pr-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 text-xs font-semibold bg-white cursor-pointer"
                 >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
+                  {(company?.reportPriorities && company.reportPriorities.length > 0
+                    ? company.reportPriorities
+                    : ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+                  ).map((p) => (
+                    <option key={p} value={p}>
+                      {p.charAt(0) + p.slice(1).toLowerCase()}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

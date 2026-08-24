@@ -147,54 +147,106 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
     }
   };
 
+  // Auto-save helper for instant feedback & persistence
+  const saveMasterLookups = async (
+    mTypes = maintenanceTypes,
+    rStatuses = reportStatuses,
+    rPriorities = reportPriorities
+  ) => {
+    try {
+      const res = await apiRequest<{ company: Company }>('/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name,
+          systemName,
+          tagline,
+          primaryColor,
+          secondaryColor,
+          maintenanceTypes: mTypes,
+          reportStatuses: rStatuses,
+          reportPriorities: rPriorities,
+        }),
+      });
+
+      const currentLogo = localStorage.getItem('company_logo') || res.company.logoUrl || null;
+      updateCompany({ ...res.company, logoUrl: currentLogo });
+    } catch (err: any) {
+      console.error('Failed to save lookups:', err);
+    }
+  };
+
   // Handlers for Maintenance Schedule Types
-  const handleAddMaintenanceType = () => {
-    if (!newMaintenanceType.trim()) return;
-    if (maintenanceTypes.includes(newMaintenanceType.trim())) {
+  const handleAddMaintenanceType = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newMaintenanceType.trim();
+    if (!trimmed) return;
+    if (maintenanceTypes.includes(trimmed)) {
       setError('Maintenance type already exists');
       return;
     }
-    setMaintenanceTypes([...maintenanceTypes, newMaintenanceType.trim()]);
+    const updated = [...maintenanceTypes, trimmed];
+    setMaintenanceTypes(updated);
     setNewMaintenanceType('');
     setError('');
+    setMessage(`Added "${trimmed}" to Maintenance Schedule Types`);
+    saveMasterLookups(updated, reportStatuses, reportPriorities);
   };
 
   const handleDeleteMaintenanceType = (item: string) => {
-    setMaintenanceTypes(maintenanceTypes.filter((t) => t !== item));
+    const updated = maintenanceTypes.filter((t) => t !== item);
+    setMaintenanceTypes(updated);
+    setMessage(`Removed "${item}" from Maintenance Schedule Types`);
+    saveMasterLookups(updated, reportStatuses, reportPriorities);
   };
 
   // Handlers for Report Statuses
-  const handleAddStatus = () => {
-    if (!newStatus.trim()) return;
-    const formatted = newStatus.trim().toUpperCase().replace(/\s+/g, '_');
+  const handleAddStatus = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newStatus.trim();
+    if (!trimmed) return;
+    const formatted = trimmed.toUpperCase().replace(/\s+/g, '_');
     if (reportStatuses.includes(formatted)) {
       setError('Report Status already exists');
       return;
     }
-    setReportStatuses([...reportStatuses, formatted]);
+    const updated = [...reportStatuses, formatted];
+    setReportStatuses(updated);
     setNewStatus('');
     setError('');
+    setMessage(`Added "${formatted}" to Report Statuses`);
+    saveMasterLookups(maintenanceTypes, updated, reportPriorities);
   };
 
   const handleDeleteStatus = (item: string) => {
-    setReportStatuses(reportStatuses.filter((s) => s !== item));
+    const updated = reportStatuses.filter((s) => s !== item);
+    setReportStatuses(updated);
+    setMessage(`Removed "${item}" from Report Statuses`);
+    saveMasterLookups(maintenanceTypes, updated, reportPriorities);
   };
 
   // Handlers for Priorities
-  const handleAddPriority = () => {
-    if (!newPriority.trim()) return;
-    const formatted = newPriority.trim().toUpperCase();
+  const handleAddPriority = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newPriority.trim();
+    if (!trimmed) return;
+    const formatted = trimmed.toUpperCase();
     if (reportPriorities.includes(formatted)) {
       setError('Priority level already exists');
       return;
     }
-    setReportPriorities([...reportPriorities, formatted]);
+    const updated = [...reportPriorities, formatted];
+    setReportPriorities(updated);
     setNewPriority('');
     setError('');
+    setMessage(`Added "${formatted}" to Report Priorities`);
+    saveMasterLookups(maintenanceTypes, reportStatuses, updated);
   };
 
   const handleDeletePriority = (item: string) => {
-    setReportPriorities(reportPriorities.filter((p) => p !== item));
+    const updated = reportPriorities.filter((p) => p !== item);
+    setReportPriorities(updated);
+    setMessage(`Removed "${item}" from Report Priorities`);
+    saveMasterLookups(maintenanceTypes, reportStatuses, updated);
   };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -258,7 +310,7 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
         <div className="flex border-b border-slate-200 bg-slate-100/50 px-5 pt-3 gap-2 overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveTab('general')}
+            onClick={() => { setActiveTab('general'); setMessage(''); setError(''); }}
             className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center space-x-1.5 ${
               activeTab === 'general'
                 ? 'bg-white text-[#123C73] border-t-2 border-t-[#123C73] shadow-xs'
@@ -271,7 +323,7 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
 
           <button
             type="button"
-            onClick={() => setActiveTab('maintenance')}
+            onClick={() => { setActiveTab('maintenance'); setMessage(''); setError(''); }}
             className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center space-x-1.5 ${
               activeTab === 'maintenance'
                 ? 'bg-white text-[#123C73] border-t-2 border-t-[#123C73] shadow-xs'
@@ -284,7 +336,7 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
 
           <button
             type="button"
-            onClick={() => setActiveTab('statuses')}
+            onClick={() => { setActiveTab('statuses'); setMessage(''); setError(''); }}
             className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center space-x-1.5 ${
               activeTab === 'statuses'
                 ? 'bg-white text-[#123C73] border-t-2 border-t-[#123C73] shadow-xs'
@@ -297,7 +349,7 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
 
           <button
             type="button"
-            onClick={() => setActiveTab('priorities')}
+            onClick={() => { setActiveTab('priorities'); setMessage(''); setError(''); }}
             className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center space-x-1.5 ${
               activeTab === 'priorities'
                 ? 'bg-white text-[#123C73] border-t-2 border-t-[#123C73] shadow-xs'
@@ -309,8 +361,8 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSaveSettings} className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
           {message && (
             <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 font-medium">
               {message}
@@ -324,7 +376,7 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
 
           {/* TAB 1: GENERAL & BRANDING */}
           {activeTab === 'general' && (
-            <div className="space-y-4">
+            <form onSubmit={handleSaveSettings} className="space-y-4">
               {/* Live Preview Card */}
               <div className="p-4 bg-slate-100/80 rounded-xl border border-slate-200 flex items-center space-x-3">
                 <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center p-1 overflow-hidden shadow shrink-0">
@@ -452,7 +504,26 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
                   </div>
                 </div>
               </div>
-            </div>
+
+              {/* Submit Footer */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-5 py-2 border border-slate-300 rounded-full font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  Close
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-6 py-2 bg-[#123C73] hover:bg-[#0e2f5c] text-white rounded-full font-bold shadow-md shadow-blue-900/20 transition-all disabled:opacity-50"
+                >
+                  {loading ? 'Saving...' : 'Save General Settings'}
+                </button>
+              </div>
+            </form>
           )}
 
           {/* TAB 2: MAINTENANCE SCHEDULE TYPES */}
@@ -462,8 +533,8 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
                 Superadmins can create, modify, and delete Maintenance Schedule Types available across the assets and facilities modules.
               </div>
 
-              {/* Add New Type */}
-              <div className="flex items-center space-x-2">
+              {/* Add New Type Form */}
+              <form onSubmit={handleAddMaintenanceType} className="flex items-center space-x-2">
                 <input
                   type="text"
                   value={newMaintenanceType}
@@ -472,17 +543,16 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
                   className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                 />
                 <button
-                  type="button"
-                  onClick={handleAddMaintenanceType}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs shadow transition-all flex items-center space-x-1"
+                  type="submit"
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-xs shadow transition-all flex items-center space-x-1 shrink-0"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add Type</span>
                 </button>
-              </div>
+              </form>
 
               {/* List */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
                 {maintenanceTypes.map((item) => (
                   <div key={item} className="px-4 py-2.5 flex items-center justify-between hover:bg-slate-50">
                     <div className="flex items-center space-x-2">
@@ -511,8 +581,8 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
                 Superadmins can define custom Report & Task Statuses across system monitoring and task assignment views.
               </div>
 
-              {/* Add New Status */}
-              <div className="flex items-center space-x-2">
+              {/* Add New Status Form */}
+              <form onSubmit={handleAddStatus} className="flex items-center space-x-2">
                 <input
                   type="text"
                   value={newStatus}
@@ -521,17 +591,16 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
                   className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <button
-                  type="button"
-                  onClick={handleAddStatus}
-                  className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-bold text-xs shadow transition-all flex items-center space-x-1"
+                  type="submit"
+                  className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-bold text-xs shadow transition-all flex items-center space-x-1 shrink-0"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add Status</span>
                 </button>
-              </div>
+              </form>
 
               {/* List */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
                 {reportStatuses.map((item) => (
                   <div key={item} className="px-4 py-2.5 flex items-center justify-between hover:bg-slate-50">
                     <div className="flex items-center space-x-2">
@@ -561,8 +630,8 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
                 Superadmins can manage Report Priority levels (Low, Medium, High, Critical, Urgent, etc.).
               </div>
 
-              {/* Add New Priority */}
-              <div className="flex items-center space-x-2">
+              {/* Add New Priority Form */}
+              <form onSubmit={handleAddPriority} className="flex items-center space-x-2">
                 <input
                   type="text"
                   value={newPriority}
@@ -571,17 +640,16 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
                   className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                 />
                 <button
-                  type="button"
-                  onClick={handleAddPriority}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow transition-all flex items-center space-x-1"
+                  type="submit"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow transition-all flex items-center space-x-1 shrink-0"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add Priority</span>
                 </button>
-              </div>
+              </form>
 
               {/* List */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
                 {reportPriorities.map((item) => (
                   <div key={item} className="px-4 py-2.5 flex items-center justify-between hover:bg-slate-50">
                     <div className="flex items-center space-x-2">
@@ -603,26 +671,7 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
               </div>
             </div>
           )}
-
-          {/* Footer Buttons */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2 border border-slate-300 rounded-full font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-[#123C73] hover:bg-[#0e2f5c] text-white rounded-full font-bold shadow-md shadow-blue-900/20 transition-all disabled:opacity-50"
-            >
-              {loading ? 'Saving...' : 'Save SaaS Configuration'}
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   );
