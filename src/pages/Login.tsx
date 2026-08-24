@@ -173,9 +173,14 @@ export const Login: React.FC = () => {
             </div>
           </div>
 
-          <p className="text-center text-[11px] text-slate-400">
-            Authorized personnel only • Secure Task Monitoring access
-          </p>
+          <div className="pt-2 border-t border-slate-200 flex flex-col items-center justify-center space-y-1 text-center">
+            <p className="text-[11px] text-slate-500 font-semibold">
+              © T-Tech Solution
+            </p>
+            <p className="text-[10px] text-slate-400">
+              Authorized personnel only • Secure Task Monitoring access
+            </p>
+          </div>
         </div>
       </div>
     </div>

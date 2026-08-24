@@ -21,11 +21,19 @@ export const AppLayout: React.FC = () => {
       <Topbar />
 
       {/* Main Content Area */}
-      <main className="pl-[230px] pt-4 px-6 pb-12 flex-1">
+      <main className="pl-[230px] pt-4 px-6 pb-6 flex-1">
         <div className="max-w-7xl mx-auto">
           <Outlet />
         </div>
       </main>
+
+      {/* Persistent Footer across all pages */}
+      <footer className="pl-[230px] py-4 px-6 border-t border-slate-200 bg-white text-center text-xs font-semibold text-slate-500">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+          <span>© T-Tech Solution</span>
+          <span className="text-[11px] text-slate-400 font-medium">Task Monitoring & Management SaaS Platform</span>
+        </div>
+      </footer>
 
       {/* System Settings Modal */}
       <SystemSettingsModal
