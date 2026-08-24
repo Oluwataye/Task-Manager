@@ -1,31 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Calendar as CalendarIcon,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-} from 'lucide-react';
-import { Task } from '../types';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Task, User } from '../types';
 import { apiRequest } from '../lib/api';
 import { CreateTaskModal } from '../components/modals/CreateTaskModal';
 
 export const CalendarView: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
+  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const fetchCalendarTasks = async () => {
     try {
-      const data = await apiRequest<{ tasks: Task[] }>('/tasks');
-      setTasks(data.tasks);
+      const [tRes, uRes] = await Promise.all([
+        apiRequest<{ tasks: Task[] }>('/tasks'),
+        apiRequest<{ users: User[] }>('/users'),
+      ]);
+      setTasks(tRes.tasks);
+      setUsers(uRes.users);
     } catch (err) {
       console.error(err);
     }
@@ -54,6 +51,7 @@ export const CalendarView: React.FC = () => {
   const filteredTasks = tasks.filter((t) => {
     if (statusFilter !== 'ALL' && t.status !== statusFilter) return false;
     if (priorityFilter !== 'ALL' && t.priority !== priorityFilter) return false;
+    if (assigneeFilter !== 'ALL' && !t.assignees.some(a => a.userId === assigneeFilter)) return false;
     return true;
   });
 
@@ -67,63 +65,48 @@ export const CalendarView: React.FC = () => {
   const todayStr = new Date().toISOString().split('T')[0];
   const dueToday = filteredTasks.filter((t) => t.dueDate && t.dueDate.startsWith(todayStr)).length;
   const overdueCount = filteredTasks.filter((t) => t.dueStatus === 'Overdue').length;
+  const upcomingCount = filteredTasks.filter((t) => {
+    if (!t.dueDate || ['COMPLETED', 'CANCELLED'].includes(t.status)) return false;
+    const diff = (new Date(t.dueDate).getTime() - Date.now()) / 86400000;
+    return diff > 0 && diff <= 7;
+  }).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Calendar</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Visualize task schedules, due dates, and deadlines across your organization.
-          </p>
+          <h1 className="text-xl font-extrabold text-slate-900">Task Calendar</h1>
+          <p className="text-xs text-slate-500 mt-0.5">See deadlines, upcoming work, and assigned tasks in one monthly view.</p>
         </div>
-
         <button
-          onClick={() => {
-            setSelectedTask(null);
-            setIsModalOpen(true);
-          }}
-          className="px-5 py-2.5 bg-[#123C73] hover:bg-[#0e2f5c] text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center space-x-1.5 shrink-0"
+          onClick={() => { setSelectedTask(null); setIsModalOpen(true); }}
+          className="px-4 py-2 text-white rounded-lg text-xs font-bold shadow-md transition-all flex items-center space-x-1.5 shrink-0"
+          style={{ background: '#123C73' }}
         >
-          <Plus className="w-4 h-4" />
-          <span>+ Add Task</span>
+          <Plus className="w-4 h-4" /><span>+ Add Task</span>
         </button>
       </div>
 
-      {/* 4 Stat Cards Header */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="custom-card p-4 flex items-center space-x-3 border-l-4 border-l-blue-600">
-          <CalendarIcon className="w-8 h-8 text-blue-600" />
-          <div>
-            <div className="text-xl font-extrabold text-slate-900">{tasksThisMonth}</div>
-            <div className="text-xs text-slate-500 font-medium">Tasks This Month</div>
+      {/* 4 Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: 'Tasks This Month', val: tasksThisMonth, icon: '⊟', color: '#3B82F6', bg: '#EFF6FF' },
+          { label: 'Due Today', val: dueToday, icon: '✓', color: '#16A34A', bg: '#F0FDF4' },
+          { label: 'Upcoming', val: upcomingCount, icon: '→', color: '#F59E0B', bg: '#FFFBEB' },
+          { label: 'Overdue', val: overdueCount, icon: '!', color: '#EF4444', bg: '#FEF2F2' },
+        ].map((s) => (
+          <div key={s.label} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-base font-extrabold shrink-0"
+              style={{ background: s.bg, color: s.color }}>
+              {s.icon}
+            </div>
+            <div>
+              <div className="text-xl font-extrabold text-slate-900 leading-none">{s.val}</div>
+              <div className="text-[11px] text-slate-500 font-medium mt-0.5">{s.label}</div>
+            </div>
           </div>
-        </div>
-
-        <div className="custom-card p-4 flex items-center space-x-3 border-l-4 border-l-amber-500">
-          <Clock className="w-8 h-8 text-amber-500" />
-          <div>
-            <div className="text-xl font-extrabold text-slate-900">{dueToday}</div>
-            <div className="text-xs text-slate-500 font-medium">Due Today</div>
-          </div>
-        </div>
-
-        <div className="custom-card p-4 flex items-center space-x-3 border-l-4 border-l-emerald-500">
-          <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-          <div>
-            <div className="text-xl font-extrabold text-slate-900">{filteredTasks.length}</div>
-            <div className="text-xs text-slate-500 font-medium">Total Visible</div>
-          </div>
-        </div>
-
-        <div className="custom-card p-4 flex items-center space-x-3 border-l-4 border-l-rose-500">
-          <AlertTriangle className="w-8 h-8 text-rose-500" />
-          <div>
-            <div className="text-xl font-extrabold text-slate-900">{overdueCount}</div>
-            <div className="text-xs text-slate-500 font-medium">Overdue</div>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Toolbar & Filters */}
@@ -155,27 +138,7 @@ export const CalendarView: React.FC = () => {
           </h2>
         </div>
 
-        <div className="flex items-center space-x-3 w-full md:w-auto">
-          {/* View switcher */}
-          <div className="flex items-center border border-slate-200 rounded-lg p-1 bg-slate-50 text-xs font-bold">
-            <button
-              onClick={() => setViewMode('month')}
-              className={`px-3 py-1 rounded transition-all ${
-                viewMode === 'month' ? 'bg-white text-blue-800 shadow-xs' : 'text-slate-500'
-              }`}
-            >
-              Month
-            </button>
-            <button
-              onClick={() => setViewMode('week')}
-              className={`px-3 py-1 rounded transition-all ${
-                viewMode === 'week' ? 'bg-white text-blue-800 shadow-xs' : 'text-slate-500'
-              }`}
-            >
-              Week
-            </button>
-          </div>
-
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -184,7 +147,9 @@ export const CalendarView: React.FC = () => {
             <option value="ALL">All Status</option>
             <option value="NOT_STARTED">Not Started</option>
             <option value="IN_PROGRESS">In Progress</option>
+            <option value="ON_HOLD">On Hold</option>
             <option value="COMPLETED">Completed</option>
+            <option value="CANCELLED">Cancelled</option>
           </select>
 
           <select
@@ -196,6 +161,17 @@ export const CalendarView: React.FC = () => {
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>
             <option value="HIGH">High</option>
+          </select>
+
+          <select
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold bg-white"
+          >
+            <option value="ALL">All Assignees</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.fullName}</option>
+            ))}
           </select>
         </div>
       </div>
