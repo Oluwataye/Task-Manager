@@ -90,19 +90,43 @@ let tasks: any[] = [
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
+function computeDueStatus(t: any): string {
+  if (!t.dueDate) return 'On Time';
+  const due = new Date(t.dueDate);
+  const now = new Date();
+  if (['COMPLETED', 'CANCELLED'].includes(t.status)) return 'On Time';
+  if (due < now) return 'Overdue';
+  const diffMs = due.getTime() - now.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  if (diffDays <= 3) return 'Due Soon';
+  return 'On Time';
+}
+
 function enrichTask(t: any) {
+  // Return assignees in the TaskAssignee shape: { taskId, userId, user: User }
   const assignees = t.assigneeIds.map((uid: string) => {
     const u = users.find((x) => x.id === uid);
-    return u ? { id: u.id, fullName: u.fullName, email: u.email, role: u.role, photoUrl: u.photoUrl } : null;
+    if (!u) return null;
+    const { passwordHash, ...safeU } = u;
+    return { taskId: t.id, userId: uid, user: { ...safeU, company } };
   }).filter(Boolean);
 
-  const createdBy = users.find((u) => u.id === t.createdById);
+  const createdByUser = users.find((u) => u.id === t.createdById);
   const property = properties.find((p) => p.id === t.propertyId) || null;
   const project = projects.find((p) => p.id === t.projectId) || null;
   const asset = assets.find((a) => a.id === t.assetId) || null;
   const invoice = invoices.find((i) => i.id === t.invoiceId) || null;
 
-  return { ...t, assignees, createdBy, property, project, asset, invoice };
+  return {
+    ...t,
+    dueStatus: computeDueStatus(t),
+    assignees,
+    createdBy: createdByUser ? { id: createdByUser.id, fullName: createdByUser.fullName } : null,
+    property,
+    project,
+    asset,
+    invoice,
+  };
 }
 
 function safeUser(u: any) {
