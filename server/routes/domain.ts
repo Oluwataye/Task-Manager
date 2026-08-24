@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
-import { authenticateJWT, AuthRequest } from '../middleware/auth.js';
+import { authenticateJWT, requireRoles, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -23,7 +23,7 @@ router.get('/properties', authenticateJWT, async (req: AuthRequest, res: Respons
   }
 });
 
-router.post('/properties', authenticateJWT, async (req: AuthRequest, res: Response) => {
+router.post('/properties', authenticateJWT, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROPERTY_MANAGER']), async (req: AuthRequest, res: Response) => {
   try {
     const { name, address } = req.body;
     if (!name) return res.status(400).json({ error: 'Property name required' });
@@ -60,7 +60,7 @@ router.get('/projects', authenticateJWT, async (req: AuthRequest, res: Response)
   }
 });
 
-router.post('/projects', authenticateJWT, async (req: AuthRequest, res: Response) => {
+router.post('/projects', authenticateJWT, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER']), async (req: AuthRequest, res: Response) => {
   try {
     const { name, propertyId } = req.body;
     if (!name) return res.status(400).json({ error: 'Project name required' });
@@ -97,7 +97,7 @@ router.get('/assets', authenticateJWT, async (req: AuthRequest, res: Response) =
   }
 });
 
-router.post('/assets', authenticateJWT, async (req: AuthRequest, res: Response) => {
+router.post('/assets', authenticateJWT, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'FACILITIES_MANAGER']), async (req: AuthRequest, res: Response) => {
   try {
     const { name, maintenanceType = 'Routine Maintenance', propertyId } = req.body;
     if (!name) return res.status(400).json({ error: 'Asset name required' });
@@ -135,7 +135,7 @@ router.get('/invoices', authenticateJWT, async (req: AuthRequest, res: Response)
   }
 });
 
-router.post('/invoices', authenticateJWT, async (req: AuthRequest, res: Response) => {
+router.post('/invoices', authenticateJWT, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'FINANCE_OFFICER']), async (req: AuthRequest, res: Response) => {
   try {
     const { invoiceNumber, amount, status = 'UNPAID', dueDate } = req.body;
     if (!invoiceNumber || !amount || !dueDate) {

@@ -15,12 +15,14 @@ import {
   LogOut,
   Quote,
   Building,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Role } from '../../types';
 
 interface SidebarProps {
   onOpenSettings?: () => void;
+  onOpenAuditLogs?: () => void;
 }
 
 const quotes = [
@@ -29,7 +31,7 @@ const quotes = [
   { text: 'The secret of getting ahead is getting started.', author: 'Mark Twain' },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings, onOpenAuditLogs }) => {
   const { user, company, logout } = useAuth();
   const navigate = useNavigate();
   const [quoteIndex] = useState(0);
@@ -258,14 +260,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
               )}
 
               {showSettings && (
-                <button
-                  type="button"
-                  onClick={() => onOpenSettings && onOpenSettings()}
-                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-semibold text-sidebar-text hover:bg-slate-800/60 hover:text-white transition-all text-left"
-                >
-                  <Settings className="w-4 h-4 shrink-0" />
-                  <span>Settings</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onOpenSettings && onOpenSettings()}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-semibold text-sidebar-text hover:bg-slate-800/60 hover:text-white transition-all text-left"
+                  >
+                    <Settings className="w-4 h-4 shrink-0" />
+                    <span>Settings</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenAuditLogs && onOpenAuditLogs()}
+                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-semibold text-sidebar-text hover:bg-slate-800/60 hover:text-white transition-all text-left"
+                  >
+                    <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span>Audit Logs</span>
+                  </button>
+                </>
               )}
             </nav>
           </div>

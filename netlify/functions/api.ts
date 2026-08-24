@@ -19,6 +19,73 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// ─── Security Headers Middleware ───────────────────────────────────────────────
+
+app.use((_req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// ─── Login Rate Limiter ────────────────────────────────────────────────────────
+
+const loginAttemptsMap = new Map<string, { count: number; firstAttempt: number }>();
+function loginRateLimiter(req: any, res: any, next: any) {
+  const ip = req.ip || req.headers['x-forwarded-for'] || '127.0.0.1';
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const maxAttempts = 10;
+
+  const record = loginAttemptsMap.get(ip);
+  if (record) {
+    if (now - record.firstAttempt > windowMs) {
+      loginAttemptsMap.set(ip, { count: 0, firstAttempt: now });
+    } else if (record.count >= maxAttempts) {
+      return res.status(429).json({ error: 'Too many login attempts. Please try again in 15 minutes.' });
+    }
+  } else {
+    loginAttemptsMap.set(ip, { count: 0, firstAttempt: now });
+  }
+  next();
+}
+
+function recordFailedLogin(ip: string) {
+  const record = loginAttemptsMap.get(ip) || { count: 0, firstAttempt: Date.now() };
+  record.count += 1;
+  loginAttemptsMap.set(ip, record);
+}
+
+// ─── Audit Log Store ───────────────────────────────────────────────────────────
+
+let auditLogs: any[] = [
+  {
+    id: 'audit-001',
+    timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
+    userId: 'user-superadmin',
+    userEmail: 'superadmin@acme.com',
+    userRole: 'SUPER_ADMIN',
+    companyId: 'company-acme-001',
+    action: 'SYSTEM_INITIALIZATION',
+    targetResource: 'SYSTEM',
+    targetId: 'company-acme-001',
+    details: 'System seeded and baseline RBAC security parameters loaded.',
+    ip: '127.0.0.1',
+  },
+];
+
+function logAudit(entry: any) {
+  const newLog = {
+    id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    timestamp: new Date().toISOString(),
+    ...entry,
+  };
+  auditLogs.unshift(newLog);
+  if (auditLogs.length > 500) auditLogs.pop();
+  return newLog;
+}
+
 // ─── In-Memory Data Store ──────────────────────────────────────────────────────
 
 const PASSWORD_HASH = bcrypt.hashSync('password123', 10);
@@ -177,20 +244,41 @@ function issueToken(user: any) {
 
 // ─── Auth Routes ───────────────────────────────────────────────────────────────
 
-app.post('/api/auth/login', async (req: any, res: any) => {
+app.post('/api/auth/login', loginRateLimiter, async (req: any, res: any) => {
   try {
+    const ip = req.ip || req.headers['x-forwarded-for'] || '127.0.0.1';
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
     const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    if (user.status !== 'ACTIVE') return res.status(403).json({ error: `Account is ${user.status.toLowerCase()}` });
+    if (!user) {
+      recordFailedLogin(ip);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    if (user.status !== 'ACTIVE') {
+      return res.status(403).json({ error: `Account is ${user.status.toLowerCase()}` });
+    }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!isMatch) {
+      recordFailedLogin(ip);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const token = issueToken(user);
     res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+    logAudit({
+      userId: user.id,
+      userEmail: user.email,
+      userRole: user.role,
+      companyId: user.companyId,
+      action: 'USER_LOGIN',
+      targetResource: 'AUTH',
+      targetId: user.id,
+      details: `Successful user login for ${user.fullName} (${user.role})`,
+      ip,
+    });
 
     return res.json({ message: 'Login successful', token, user: safeUser(user) });
   } catch (e: any) {
@@ -199,7 +287,20 @@ app.post('/api/auth/login', async (req: any, res: any) => {
   }
 });
 
-app.post('/api/auth/logout', (_req: any, res: any) => {
+app.post('/api/auth/logout', authMiddleware, (req: any, res: any) => {
+  if (req.user) {
+    logAudit({
+      userId: req.user.id,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      companyId: req.user.companyId,
+      action: 'USER_LOGOUT',
+      targetResource: 'AUTH',
+      targetId: req.user.id,
+      details: 'User logged out',
+      ip: req.ip || '127.0.0.1',
+    });
+  }
   res.clearCookie('token');
   return res.json({ message: 'Logged out successfully' });
 });
@@ -219,7 +320,27 @@ app.post('/api/auth/switch-role', authMiddleware, (req: any, res: any) => {
   if (!target) return res.status(404).json({ error: `No user found for role: ${targetRole}` });
   const token = issueToken(target);
   res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'SWITCH_ROLE',
+    targetResource: 'ROLE',
+    targetId: target.id,
+    details: `Switched active role context to ${targetRole}`,
+    ip: req.ip || '127.0.0.1',
+  });
+
   return res.json({ message: `Switched to ${targetRole}`, token, user: safeUser(target) });
+});
+
+// ─── Audit Log Route ───────────────────────────────────────────────────────────
+
+app.get('/api/audit-logs', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN']), (req: any, res: any) => {
+  const companyLogs = auditLogs.filter((l) => l.companyId === req.user.companyId);
+  return res.json({ auditLogs: companyLogs });
 });
 
 // ─── Settings Routes ───────────────────────────────────────────────────────────
@@ -449,100 +570,235 @@ const handleUpdateCompany = (req: any, res: any) => {
 app.put('/api/settings/company', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN']), handleUpdateCompany);
 app.patch('/api/settings/company', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN']), handleUpdateCompany);
 
-// ─── Domain/Properties/Projects/Assets Routes ─────────────────────────────────
+// ─── Domain/Properties/Projects/Assets/Invoices Routes ─────────────────────────
 
-app.get('/api/domain/properties', authMiddleware, (_req: any, res: any) => res.json({ properties }));
-app.post('/api/domain/properties', authMiddleware, (req: any, res: any) => {
-  const newProp = { id: `prop-${Date.now()}`, companyId: req.user.companyId, ...req.body, createdAt: new Date().toISOString() };
+// ── Properties
+app.get('/api/domain/properties', authMiddleware, (req: any, res: any) => {
+  const companyProps = properties.filter((p) => p.companyId === req.user.companyId);
+  return res.json({ properties: companyProps });
+});
+
+app.post('/api/domain/properties', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROPERTY_MANAGER']), (req: any, res: any) => {
+  const { name, address } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Property name is required' });
+  const newProp = { id: `prop-${Date.now()}`, companyId: req.user.companyId, name: name.trim(), address: address || '', createdAt: new Date().toISOString() };
   properties.push(newProp);
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'PROPERTY_CREATE',
+    targetResource: 'PROPERTY',
+    targetId: newProp.id,
+    details: `Created property "${newProp.name}"`,
+    ip: req.ip || '127.0.0.1',
+  });
+
   return res.status(201).json({ property: newProp });
 });
 
 const handleUpdateProperty = (req: any, res: any) => {
-  const idx = properties.findIndex((p) => p.id === req.params.id);
+  const idx = properties.findIndex((p) => p.id === req.params.id && p.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'Property not found' });
   properties[idx] = { ...properties[idx], ...req.body };
   return res.json({ property: properties[idx] });
 };
-app.put('/api/domain/properties/:id', authMiddleware, handleUpdateProperty);
-app.patch('/api/domain/properties/:id', authMiddleware, handleUpdateProperty);
+app.put('/api/domain/properties/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROPERTY_MANAGER']), handleUpdateProperty);
+app.patch('/api/domain/properties/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROPERTY_MANAGER']), handleUpdateProperty);
 
-app.delete('/api/domain/properties/:id', authMiddleware, (req: any, res: any) => {
-  const idx = properties.findIndex((p) => p.id === req.params.id);
+app.delete('/api/domain/properties/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROPERTY_MANAGER']), (req: any, res: any) => {
+  const idx = properties.findIndex((p) => p.id === req.params.id && p.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'Property not found' });
-  properties.splice(idx, 1);
-  return res.json({ message: 'Deleted' });
+  const deleted = properties.splice(idx, 1)[0];
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'PROPERTY_DELETE',
+    targetResource: 'PROPERTY',
+    targetId: req.params.id,
+    details: `Deleted property "${deleted?.name || req.params.id}"`,
+    ip: req.ip || '127.0.0.1',
+  });
+
+  return res.json({ message: 'Property deleted' });
 });
 
-app.get('/api/domain/projects', authMiddleware, (_req: any, res: any) => res.json({ projects }));
-app.post('/api/domain/projects', authMiddleware, (req: any, res: any) => {
-  const newProj = { id: `proj-${Date.now()}`, companyId: req.user.companyId, ...req.body, createdAt: new Date().toISOString() };
+// ── Projects
+app.get('/api/domain/projects', authMiddleware, (req: any, res: any) => {
+  const companyProjs = projects.filter((p) => p.companyId === req.user.companyId);
+  return res.json({ projects: companyProjs });
+});
+
+app.post('/api/domain/projects', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER']), (req: any, res: any) => {
+  const { name, propertyId } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Project name is required' });
+  const newProj = { id: `proj-${Date.now()}`, companyId: req.user.companyId, name: name.trim(), propertyId: propertyId || null, createdAt: new Date().toISOString() };
   projects.push(newProj);
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'PROJECT_CREATE',
+    targetResource: 'PROJECT',
+    targetId: newProj.id,
+    details: `Created project "${newProj.name}"`,
+    ip: req.ip || '127.0.0.1',
+  });
+
   return res.status(201).json({ project: newProj });
 });
 
 const handleUpdateProject = (req: any, res: any) => {
-  const idx = projects.findIndex((p) => p.id === req.params.id);
+  const idx = projects.findIndex((p) => p.id === req.params.id && p.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'Project not found' });
   projects[idx] = { ...projects[idx], ...req.body };
   return res.json({ project: projects[idx] });
 };
-app.put('/api/domain/projects/:id', authMiddleware, handleUpdateProject);
-app.patch('/api/domain/projects/:id', authMiddleware, handleUpdateProject);
+app.put('/api/domain/projects/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER']), handleUpdateProject);
+app.patch('/api/domain/projects/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER']), handleUpdateProject);
 
-app.delete('/api/domain/projects/:id', authMiddleware, (req: any, res: any) => {
-  const idx = projects.findIndex((p) => p.id === req.params.id);
+app.delete('/api/domain/projects/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'PROJECT_MANAGER']), (req: any, res: any) => {
+  const idx = projects.findIndex((p) => p.id === req.params.id && p.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'Project not found' });
-  projects.splice(idx, 1);
-  return res.json({ message: 'Deleted' });
+  const deleted = projects.splice(idx, 1)[0];
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'PROJECT_DELETE',
+    targetResource: 'PROJECT',
+    targetId: req.params.id,
+    details: `Deleted project "${deleted?.name || req.params.id}"`,
+    ip: req.ip || '127.0.0.1',
+  });
+
+  return res.json({ message: 'Project deleted' });
 });
 
-app.get('/api/domain/assets', authMiddleware, (_req: any, res: any) => res.json({ assets }));
-app.post('/api/domain/assets', authMiddleware, (req: any, res: any) => {
-  const newAsset = { id: `asset-${Date.now()}`, companyId: req.user.companyId, ...req.body, createdAt: new Date().toISOString() };
+// ── Assets
+app.get('/api/domain/assets', authMiddleware, (req: any, res: any) => {
+  const companyAssets = assets.filter((a) => a.companyId === req.user.companyId);
+  return res.json({ assets: companyAssets });
+});
+
+app.post('/api/domain/assets', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'FACILITIES_MANAGER']), (req: any, res: any) => {
+  const { name, maintenanceType, propertyId } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Asset name is required' });
+  const newAsset = { id: `asset-${Date.now()}`, companyId: req.user.companyId, name: name.trim(), maintenanceType: maintenanceType || 'Routine Servicing', propertyId: propertyId || null, createdAt: new Date().toISOString() };
   assets.push(newAsset);
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'ASSET_CREATE',
+    targetResource: 'ASSET',
+    targetId: newAsset.id,
+    details: `Created asset "${newAsset.name}" (${newAsset.maintenanceType})`,
+    ip: req.ip || '127.0.0.1',
+  });
+
   return res.status(201).json({ asset: newAsset });
 });
 
 const handleUpdateAsset = (req: any, res: any) => {
-  const idx = assets.findIndex((a) => a.id === req.params.id);
+  const idx = assets.findIndex((a) => a.id === req.params.id && a.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'Asset not found' });
   assets[idx] = { ...assets[idx], ...req.body };
   return res.json({ asset: assets[idx] });
 };
-app.put('/api/domain/assets/:id', authMiddleware, handleUpdateAsset);
-app.patch('/api/domain/assets/:id', authMiddleware, handleUpdateAsset);
+app.put('/api/domain/assets/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'FACILITIES_MANAGER']), handleUpdateAsset);
+app.patch('/api/domain/assets/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'FACILITIES_MANAGER']), handleUpdateAsset);
 
-app.delete('/api/domain/assets/:id', authMiddleware, (req: any, res: any) => {
-  const idx = assets.findIndex((a) => a.id === req.params.id);
+app.delete('/api/domain/assets/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'FACILITIES_MANAGER']), (req: any, res: any) => {
+  const idx = assets.findIndex((a) => a.id === req.params.id && a.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'Asset not found' });
-  assets.splice(idx, 1);
-  return res.json({ message: 'Deleted' });
+  const deleted = assets.splice(idx, 1)[0];
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'ASSET_DELETE',
+    targetResource: 'ASSET',
+    targetId: req.params.id,
+    details: `Deleted asset "${deleted?.name || req.params.id}"`,
+    ip: req.ip || '127.0.0.1',
+  });
+
+  return res.json({ message: 'Asset deleted' });
 });
 
-app.get('/api/domain/invoices', authMiddleware, (_req: any, res: any) => res.json({ invoices }));
-app.post('/api/domain/invoices', authMiddleware, (req: any, res: any) => {
-  const newInv = { id: `inv-${Date.now()}`, companyId: req.user.companyId, ...req.body, createdAt: new Date().toISOString() };
+// ── Invoices
+app.get('/api/domain/invoices', authMiddleware, (req: any, res: any) => {
+  const companyInvoices = invoices.filter((i) => i.companyId === req.user.companyId);
+  return res.json({ invoices: companyInvoices });
+});
+
+app.post('/api/domain/invoices', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN', 'FINANCE_OFFICER']), (req: any, res: any) => {
+  const { invoiceNumber, amount, status = 'UNPAID', dueDate } = req.body;
+  if (!invoiceNumber || !amount || typeof amount !== 'number' || amount <= 0) {
+    return res.status(400).json({ error: 'Valid invoice number and positive amount are required' });
+  }
+  const newInv = {
+    id: `inv-${Date.now()}`,
+    companyId: req.user.companyId,
+    invoiceNumber: invoiceNumber.trim(),
+    amount,
+    status,
+    dueDate: dueDate || new Date(Date.now() + 86400000 * 30).toISOString(),
+    createdAt: new Date().toISOString(),
+  };
   invoices.push(newInv);
+
+  logAudit({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    userRole: req.user.role,
+    companyId: req.user.companyId,
+    action: 'INVOICE_CREATE',
+    targetResource: 'INVOICE',
+    targetId: newInv.id,
+    details: `Created invoice "${newInv.invoiceNumber}" for amount ₦${newInv.amount.toLocaleString()}`,
+    ip: req.ip || '127.0.0.1',
+  });
+
   return res.status(201).json({ invoice: newInv });
 });
 
 // ─── Reports Route ─────────────────────────────────────────────────────────────
 
-app.get('/api/reports/summary', authMiddleware, (_req: any, res: any) => {
+app.get('/api/reports/summary', authMiddleware, (req: any, res: any) => {
+  const companyTasks = tasks.filter((t) => t.companyId === req.user.companyId);
+  const companyUsers = users.filter((u) => u.companyId === req.user.companyId);
+  const companyProps = properties.filter((p) => p.companyId === req.user.companyId);
+  const companyProjs = projects.filter((p) => p.companyId === req.user.companyId);
+  const companyAssets = assets.filter((a) => a.companyId === req.user.companyId);
+
   const summary = {
-    totalTasks: tasks.length,
-    notStarted: tasks.filter((t) => t.status === 'NOT_STARTED').length,
-    inProgress: tasks.filter((t) => t.status === 'IN_PROGRESS').length,
-    completed: tasks.filter((t) => t.status === 'COMPLETED').length,
-    onHold: tasks.filter((t) => t.status === 'ON_HOLD').length,
-    cancelled: tasks.filter((t) => t.status === 'CANCELLED').length,
-    overdue: tasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date() && !['COMPLETED', 'CANCELLED'].includes(t.status)).length,
-    highPriority: tasks.filter((t) => t.priority === 'HIGH').length,
-    totalUsers: users.length,
-    totalProperties: properties.length,
-    totalProjects: projects.length,
-    totalAssets: assets.length,
+    totalTasks: companyTasks.length,
+    notStarted: companyTasks.filter((t) => t.status === 'NOT_STARTED').length,
+    inProgress: companyTasks.filter((t) => t.status === 'IN_PROGRESS').length,
+    completed: companyTasks.filter((t) => t.status === 'COMPLETED').length,
+    onHold: companyTasks.filter((t) => t.status === 'ON_HOLD').length,
+    cancelled: companyTasks.filter((t) => t.status === 'CANCELLED').length,
+    overdue: companyTasks.filter((t) => t.dueDate && new Date(t.dueDate) < new Date() && !['COMPLETED', 'CANCELLED'].includes(t.status)).length,
+    highPriority: companyTasks.filter((t) => t.priority === 'HIGH').length,
+    totalUsers: companyUsers.length,
+    totalProperties: companyProps.length,
+    totalProjects: companyProjs.length,
+    totalAssets: companyAssets.length,
   };
   return res.json({ summary });
 });

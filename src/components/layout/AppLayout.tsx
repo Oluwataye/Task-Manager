@@ -3,14 +3,19 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { SystemSettingsModal } from '../modals/SystemSettingsModal';
+import { AuditLogsModal } from '../modals/AuditLogsModal';
 
 export const AppLayout: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAuditLogsOpen, setIsAuditLogsOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-page-bg flex flex-col font-sans">
       {/* Fixed Left Sidebar */}
-      <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
+      <Sidebar
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenAuditLogs={() => setIsAuditLogsOpen(true)}
+      />
 
       {/* Sticky Topbar */}
       <Topbar />
@@ -26,6 +31,12 @@ export const AppLayout: React.FC = () => {
       <SystemSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* Audit Logs Modal */}
+      <AuditLogsModal
+        isOpen={isAuditLogsOpen}
+        onClose={() => setIsAuditLogsOpen(false)}
       />
     </div>
   );
