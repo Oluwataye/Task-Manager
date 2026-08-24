@@ -2,22 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, Eye, EyeOff, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Role } from '../types';
 
-const demoAccounts: { role: Role; title: string; email: string }[] = [
-  { role: 'SUPER_ADMIN', title: 'Super Admin', email: 'superadmin@acme.com' },
-  { role: 'COMPANY_ADMIN', title: 'Company Admin', email: 'admin@acme.com' },
-  { role: 'PROPERTY_MANAGER', title: 'Property Mgr', email: 'property@acme.com' },
-  { role: 'PROJECT_MANAGER', title: 'Project Mgr', email: 'project@acme.com' },
-  { role: 'FACILITIES_MANAGER', title: 'Facilities Mgr', email: 'facilities@acme.com' },
-  { role: 'FINANCE_OFFICER', title: 'Finance Officer', email: 'finance@acme.com' },
-  { role: 'STAFF', title: 'Staff User', email: 'staff@acme.com' },
-  { role: 'CONTRACTOR_TENANT', title: 'Contractor', email: 'contractor@acme.com' },
-];
 
 export const Login: React.FC = () => {
-  const [email, setEmail] = useState('admin@acme.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,10 +28,6 @@ export const Login: React.FC = () => {
     }
   };
 
-  const handleQuickFill = (accountEmail: string) => {
-    setEmail(accountEmail);
-    setPassword('password123');
-  };
 
   return (
     <div className="min-h-screen flex font-sans" style={{ background: '#e8edf2' }}>
@@ -149,29 +134,6 @@ export const Login: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Demo */}
-          <div className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
-            <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex justify-between">
-              <span>Quick Demo Access</span>
-              <span className="text-slate-400 font-normal">Pass: password123</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {demoAccounts.map((acc) => (
-                <button
-                  key={acc.role}
-                  type="button"
-                  onClick={() => handleQuickFill(acc.email)}
-                  className={`text-left px-2 py-1.5 rounded text-[11px] font-semibold border transition-all ${
-                    email === acc.email
-                      ? 'bg-[#123C73] text-white border-[#123C73]'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-300'
-                  }`}
-                >
-                  {acc.title}
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div className="pt-2 border-t border-slate-200 flex flex-col items-center justify-center space-y-1 text-center">
             <p className="text-[11px] text-slate-500 font-semibold">
