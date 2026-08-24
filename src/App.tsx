@@ -13,6 +13,7 @@ import { PropertiesPage } from './pages/PropertiesPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { AssetsPage } from './pages/AssetsPage';
 import { InvoicesPage } from './pages/InvoicesPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -59,6 +60,7 @@ export const AppContent: React.FC = () => {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="assets" element={<AssetsPage />} />
         <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -285,7 +285,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
 
       {/* User Card Pinned to Bottom */}
       <div className="p-3 bg-[#071F38] border-t border-slate-700/50">
-        <div className="flex items-center space-x-2.5 mb-2.5">
+        <NavLink
+          to="/profile"
+          className="flex items-center space-x-2.5 mb-2.5 p-1 rounded-lg hover:bg-slate-800/60 transition-colors group cursor-pointer"
+        >
           <div className="relative">
             <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center border border-blue-400">
               {user.fullName.split(' ').map((n) => n[0]).join('').substring(0, 2)}
@@ -293,12 +296,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenSettings }) => {
             <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full absolute bottom-0 right-0 border-2 border-[#071F38]" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-bold text-white truncate leading-tight">{user.fullName}</div>
+            <div className="text-xs font-bold text-white group-hover:text-blue-300 transition-colors truncate leading-tight">
+              {user.fullName}
+            </div>
             <div className="text-[10px] text-blue-300 truncate font-semibold uppercase tracking-wider">
               {user.role.replace('_', ' ')}
             </div>
           </div>
-        </div>
+        </NavLink>
 
         <button
           onClick={handleLogout}

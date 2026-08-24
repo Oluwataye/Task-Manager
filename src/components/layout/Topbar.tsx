@@ -1,5 +1,6 @@
 import React from 'react';
-import { Search, Bell, Shield, UserCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, Bell, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Role } from '../../types';
 
@@ -60,10 +61,17 @@ export const Topbar: React.FC = () => {
         </button>
 
         {/* User Pill */}
-        <div className="flex items-center space-x-2 border-l pl-3 border-slate-200">
-          <UserCheck className="w-4 h-4 text-emerald-600" />
-          <span className="text-xs font-medium text-slate-700">{user.fullName}</span>
-        </div>
+        <Link
+          to="/profile"
+          className="flex items-center space-x-2 border-l pl-3 border-slate-200 hover:opacity-80 transition-opacity group cursor-pointer"
+        >
+          <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shadow-xs">
+            {user.fullName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()}
+          </div>
+          <span className="text-xs font-semibold text-slate-700 group-hover:text-blue-700 transition-colors">
+            {user.fullName}
+          </span>
+        </Link>
       </div>
     </header>
   );
