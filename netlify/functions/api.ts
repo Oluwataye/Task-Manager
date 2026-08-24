@@ -103,8 +103,7 @@ function computeDueStatus(t: any): string {
 }
 
 function enrichTask(t: any) {
-  // Return assignees in the TaskAssignee shape: { taskId, userId, user: User }
-  const assignees = t.assigneeIds.map((uid: string) => {
+  const assignees = (t.assigneeIds || []).map((uid: string) => {
     const u = users.find((x) => x.id === uid);
     if (!u) return null;
     const { passwordHash, ...safeU } = u;
@@ -201,15 +200,43 @@ app.post('/api/auth/switch-role', authMiddleware, (req: any, res: any) => {
 // ─── Task Routes ───────────────────────────────────────────────────────────────
 
 app.get('/api/tasks', authMiddleware, (req: any, res: any) => {
-  let result = tasks.filter((t) => t.companyId === req.user.companyId);
-  const { status, priority, assigneeId, search, propertyId, projectId } = req.query;
-  if (status) result = result.filter((t) => t.status === status);
-  if (priority) result = result.filter((t) => t.priority === priority);
-  if (assigneeId) result = result.filter((t) => t.assigneeIds.includes(assigneeId));
+  let allCompanyTasks = tasks.filter((t) => t.companyId === req.user.companyId);
+  const { status, priority, assigneeId, search, propertyId, projectId, myTasksOnly, filterChip } = req.query;
+
+  if (myTasksOnly === 'true' || req.user.role === 'STAFF') {
+    allCompanyTasks = allCompanyTasks.filter((t) => t.assigneeIds.includes(req.user.id));
+  }
+
+  let result = allCompanyTasks;
+  if (status && status !== 'ALL' && status !== 'All Status') result = result.filter((t) => t.status === status);
+  if (priority && priority !== 'ALL' && priority !== 'All Priority') result = result.filter((t) => t.priority === priority);
+  if (assigneeId && assigneeId !== 'ALL') result = result.filter((t) => (t.assigneeIds || []).includes(assigneeId));
   if (propertyId) result = result.filter((t) => t.propertyId === propertyId);
   if (projectId) result = result.filter((t) => t.projectId === projectId);
   if (search) result = result.filter((t) => t.name.toLowerCase().includes((search as string).toLowerCase()));
-  return res.json({ tasks: result.map(enrichTask) });
+
+  const enrichedAll = result.map(enrichTask);
+
+  let filtered = enrichedAll;
+  if (filterChip === 'In Progress') {
+    filtered = enrichedAll.filter((t) => t.status === 'IN_PROGRESS');
+  } else if (filterChip === 'Completed') {
+    filtered = enrichedAll.filter((t) => t.status === 'COMPLETED');
+  } else if (filterChip === 'Overdue') {
+    filtered = enrichedAll.filter((t) => t.dueStatus === 'Overdue');
+  } else if (filterChip === 'Visible') {
+    filtered = enrichedAll.filter((t) => t.status !== 'CANCELLED');
+  }
+
+  const counts = {
+    visible: enrichedAll.filter((t) => t.status !== 'CANCELLED').length,
+    inProgress: enrichedAll.filter((t) => t.status === 'IN_PROGRESS').length,
+    completed: enrichedAll.filter((t) => t.status === 'COMPLETED').length,
+    overdue: enrichedAll.filter((t) => t.dueStatus === 'Overdue').length,
+    total: enrichedAll.length,
+  };
+
+  return res.json({ tasks: filtered, counts });
 });
 
 app.get('/api/tasks/:id', authMiddleware, (req: any, res: any) => {
@@ -235,13 +262,31 @@ app.post('/api/tasks', authMiddleware, (req: any, res: any) => {
   return res.status(201).json({ task: enrichTask(newTask) });
 });
 
-app.put('/api/tasks/:id', authMiddleware, (req: any, res: any) => {
+const handleUpdateTask = (req: any, res: any) => {
   const idx = tasks.findIndex((t) => t.id === req.params.id && t.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'Task not found' });
-  const { assigneeIds, ...rest } = req.body;
-  tasks[idx] = { ...tasks[idx], ...rest, assigneeIds: assigneeIds ?? tasks[idx].assigneeIds, updatedAt: new Date().toISOString() };
+  const { assigneeIds, status, ...rest } = req.body;
+
+  let updateFields: any = { ...rest };
+  if (status) {
+    updateFields.status = status;
+    if (status === 'COMPLETED' && !tasks[idx].completionDate) {
+      updateFields.completionDate = new Date().toISOString();
+    }
+  }
+
+  tasks[idx] = {
+    ...tasks[idx],
+    ...updateFields,
+    assigneeIds: assigneeIds ?? tasks[idx].assigneeIds,
+    updatedAt: new Date().toISOString(),
+  };
+
   return res.json({ task: enrichTask(tasks[idx]) });
-});
+};
+
+app.put('/api/tasks/:id', authMiddleware, handleUpdateTask);
+app.patch('/api/tasks/:id', authMiddleware, handleUpdateTask);
 
 app.delete('/api/tasks/:id', authMiddleware, (req: any, res: any) => {
   const idx = tasks.findIndex((t) => t.id === req.params.id && t.companyId === req.user.companyId);
@@ -274,14 +319,17 @@ app.post('/api/users', authMiddleware, async (req: any, res: any) => {
   return res.status(201).json({ user: safeUser(newUser) });
 });
 
-app.put('/api/users/:id', authMiddleware, async (req: any, res: any) => {
+const handleUpdateUser = async (req: any, res: any) => {
   const idx = users.findIndex((u) => u.id === req.params.id && u.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
   const { password, ...rest } = req.body;
   if (password) rest.passwordHash = await bcrypt.hash(password, 10);
   users[idx] = { ...users[idx], ...rest };
   return res.json({ user: safeUser(users[idx]) });
-});
+};
+
+app.put('/api/users/:id', authMiddleware, handleUpdateUser);
+app.patch('/api/users/:id', authMiddleware, handleUpdateUser);
 
 app.delete('/api/users/:id', authMiddleware, (req: any, res: any) => {
   const idx = users.findIndex((u) => u.id === req.params.id && u.companyId === req.user.companyId);
@@ -296,10 +344,13 @@ app.get('/api/settings/company', authMiddleware, (_req: any, res: any) => {
   return res.json({ company });
 });
 
-app.put('/api/settings/company', authMiddleware, (req: any, res: any) => {
+const handleUpdateCompany = (req: any, res: any) => {
   Object.assign(company, req.body);
   return res.json({ company });
-});
+};
+
+app.put('/api/settings/company', authMiddleware, handleUpdateCompany);
+app.patch('/api/settings/company', authMiddleware, handleUpdateCompany);
 
 // ─── Domain/Properties/Projects/Assets Routes ─────────────────────────────────
 
@@ -309,12 +360,16 @@ app.post('/api/domain/properties', authMiddleware, (req: any, res: any) => {
   properties.push(newProp);
   return res.status(201).json({ property: newProp });
 });
-app.put('/api/domain/properties/:id', authMiddleware, (req: any, res: any) => {
+
+const handleUpdateProperty = (req: any, res: any) => {
   const idx = properties.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Property not found' });
   properties[idx] = { ...properties[idx], ...req.body };
   return res.json({ property: properties[idx] });
-});
+};
+app.put('/api/domain/properties/:id', authMiddleware, handleUpdateProperty);
+app.patch('/api/domain/properties/:id', authMiddleware, handleUpdateProperty);
+
 app.delete('/api/domain/properties/:id', authMiddleware, (req: any, res: any) => {
   const idx = properties.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Property not found' });
@@ -328,12 +383,16 @@ app.post('/api/domain/projects', authMiddleware, (req: any, res: any) => {
   projects.push(newProj);
   return res.status(201).json({ project: newProj });
 });
-app.put('/api/domain/projects/:id', authMiddleware, (req: any, res: any) => {
+
+const handleUpdateProject = (req: any, res: any) => {
   const idx = projects.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Project not found' });
   projects[idx] = { ...projects[idx], ...req.body };
   return res.json({ project: projects[idx] });
-});
+};
+app.put('/api/domain/projects/:id', authMiddleware, handleUpdateProject);
+app.patch('/api/domain/projects/:id', authMiddleware, handleUpdateProject);
+
 app.delete('/api/domain/projects/:id', authMiddleware, (req: any, res: any) => {
   const idx = projects.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Project not found' });
@@ -347,12 +406,16 @@ app.post('/api/domain/assets', authMiddleware, (req: any, res: any) => {
   assets.push(newAsset);
   return res.status(201).json({ asset: newAsset });
 });
-app.put('/api/domain/assets/:id', authMiddleware, (req: any, res: any) => {
+
+const handleUpdateAsset = (req: any, res: any) => {
   const idx = assets.findIndex((a) => a.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Asset not found' });
   assets[idx] = { ...assets[idx], ...req.body };
   return res.json({ asset: assets[idx] });
-});
+};
+app.put('/api/domain/assets/:id', authMiddleware, handleUpdateAsset);
+app.patch('/api/domain/assets/:id', authMiddleware, handleUpdateAsset);
+
 app.delete('/api/domain/assets/:id', authMiddleware, (req: any, res: any) => {
   const idx = assets.findIndex((a) => a.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Asset not found' });
@@ -391,6 +454,12 @@ app.get('/api/reports/summary', authMiddleware, (_req: any, res: any) => {
 
 app.get('/api/health', (_req: any, res: any) => {
   return res.json({ status: 'ok', mode: 'in-memory', time: new Date().toISOString() });
+});
+
+// ─── JSON Fallback for Unknown API Routes ──────────────────────────────────────
+
+app.use('/api/*', (_req: any, res: any) => {
+  return res.status(404).json({ error: 'API route not found' });
 });
 
 // ─── Export ────────────────────────────────────────────────────────────────────
