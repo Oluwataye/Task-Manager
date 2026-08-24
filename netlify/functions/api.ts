@@ -295,6 +295,16 @@ app.delete('/api/tasks/:id', authMiddleware, (req: any, res: any) => {
   return res.json({ message: 'Task deleted' });
 });
 
+function requireRoles(allowedRoles: string[]) {
+  return (req: any, res: any, next: any) => {
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Access denied: insufficient permissions' });
+    }
+    next();
+  };
+}
+
 // ─── User Routes ───────────────────────────────────────────────────────────────
 
 app.get('/api/users', authMiddleware, (req: any, res: any) => {
@@ -308,7 +318,7 @@ app.get('/api/users/:id', authMiddleware, (req: any, res: any) => {
   return res.json({ user: safeUser(user) });
 });
 
-app.post('/api/users', authMiddleware, async (req: any, res: any) => {
+app.post('/api/users', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN']), async (req: any, res: any) => {
   const { fullName, email, role, password = 'password123', status = 'ACTIVE' } = req.body;
   if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) {
     return res.status(409).json({ error: 'Email already in use' });
@@ -320,10 +330,18 @@ app.post('/api/users', authMiddleware, async (req: any, res: any) => {
 });
 
 const handleUpdateUser = async (req: any, res: any) => {
+  // Users can edit their own profile or must be admins
+  if (req.user.id !== req.params.id && !['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Access denied: cannot edit other user profiles' });
+  }
   const idx = users.findIndex((u) => u.id === req.params.id && u.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
-  const { password, ...rest } = req.body;
+  const { password, role, ...rest } = req.body;
   if (password) rest.passwordHash = await bcrypt.hash(password, 10);
+  // Role changes allowed for admins only
+  if (role && ['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(req.user.role)) {
+    rest.role = role;
+  }
   users[idx] = { ...users[idx], ...rest };
   return res.json({ user: safeUser(users[idx]) });
 };
@@ -331,7 +349,7 @@ const handleUpdateUser = async (req: any, res: any) => {
 app.put('/api/users/:id', authMiddleware, handleUpdateUser);
 app.patch('/api/users/:id', authMiddleware, handleUpdateUser);
 
-app.delete('/api/users/:id', authMiddleware, (req: any, res: any) => {
+app.delete('/api/users/:id', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN']), (req: any, res: any) => {
   const idx = users.findIndex((u) => u.id === req.params.id && u.companyId === req.user.companyId);
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
   users.splice(idx, 1);
@@ -349,8 +367,8 @@ const handleUpdateCompany = (req: any, res: any) => {
   return res.json({ company });
 };
 
-app.put('/api/settings/company', authMiddleware, handleUpdateCompany);
-app.patch('/api/settings/company', authMiddleware, handleUpdateCompany);
+app.put('/api/settings/company', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN']), handleUpdateCompany);
+app.patch('/api/settings/company', authMiddleware, requireRoles(['SUPER_ADMIN', 'COMPANY_ADMIN']), handleUpdateCompany);
 
 // ─── Domain/Properties/Projects/Assets Routes ─────────────────────────────────
 
