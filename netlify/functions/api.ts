@@ -211,6 +211,9 @@ app.get('/api/auth/me', authMiddleware, (req: any, res: any) => {
 });
 
 app.post('/api/auth/switch-role', authMiddleware, (req: any, res: any) => {
+  if (req.user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Forbidden: Role switching is restricted to Super Admin.' });
+  }
   const { targetRole } = req.body;
   const target = users.find((u) => u.role === targetRole && u.companyId === req.user.companyId);
   if (!target) return res.status(404).json({ error: `No user found for role: ${targetRole}` });

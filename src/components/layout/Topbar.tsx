@@ -163,22 +163,24 @@ export const Topbar: React.FC = () => {
 
       {/* Right controls */}
       <div className="flex items-center space-x-4">
-        {/* Quick Demo Role Switcher */}
-        <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-          <Shield className="w-3.5 h-3.5 text-blue-700" />
-          <span className="text-[11px] font-bold text-slate-600 hidden sm:inline">Role View:</span>
-          <select
-            value={user.role}
-            onChange={(e) => switchRole(e.target.value as Role)}
-            className="bg-transparent text-xs font-bold text-blue-900 border-none outline-none cursor-pointer py-0.5"
-          >
-            {allRoles.map((r) => (
-              <option key={r.role} value={r.role}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Quick Demo Role Switcher - Restricted to SUPER_ADMIN only */}
+        {user.role === 'SUPER_ADMIN' && (
+          <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+            <Shield className="w-3.5 h-3.5 text-blue-700" />
+            <span className="text-[11px] font-bold text-slate-600 hidden sm:inline">Role View:</span>
+            <select
+              value={user.role}
+              onChange={(e) => switchRole(e.target.value as Role)}
+              className="bg-transparent text-xs font-bold text-blue-900 border-none outline-none cursor-pointer py-0.5"
+            >
+              {allRoles.map((r) => (
+                <option key={r.role} value={r.role}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Notifications Popover */}
         <div className="relative" ref={notifRef}>
