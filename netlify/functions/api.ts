@@ -197,6 +197,57 @@ app.post('/api/auth/switch-role', authMiddleware, (req: any, res: any) => {
   return res.json({ message: `Switched to ${targetRole}`, token, user: safeUser(target) });
 });
 
+// ─── Settings Routes ───────────────────────────────────────────────────────────
+
+// GET company settings
+app.get('/api/settings', authMiddleware, (req: any, res: any) => {
+  if (!['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  return res.json({ company });
+});
+
+// PATCH company settings (name, systemName, tagline, colors)
+app.patch('/api/settings', authMiddleware, (req: any, res: any) => {
+  if (!['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const { name, systemName, tagline, primaryColor, secondaryColor } = req.body;
+  if (name !== undefined) company.name = name;
+  if (systemName !== undefined) company.systemName = systemName;
+  if (tagline !== undefined) company.tagline = tagline;
+  if (primaryColor !== undefined) company.primaryColor = primaryColor;
+  if (secondaryColor !== undefined) company.secondaryColor = secondaryColor;
+  company.updatedAt = new Date().toISOString();
+  return res.json({ company });
+});
+
+// POST /api/settings/upload-logo  (accepts base64 or multipart — store as data URL in memory)
+app.post('/api/settings/upload-logo', authMiddleware, (req: any, res: any) => {
+  if (!['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  // Body may contain base64 field from client-side FileReader encoding
+  const { logoBase64 } = req.body;
+  if (logoBase64) {
+    (company as any).logoUrl = logoBase64;
+    company.updatedAt = new Date().toISOString();
+    return res.json({ logoUrl: logoBase64, company });
+  }
+  // Multipart is not natively handled without multer; return a descriptive error
+  return res.status(400).json({ error: 'Send logo as logoBase64 (data URL) in JSON body' });
+});
+
+// POST /api/settings/remove-logo
+app.post('/api/settings/remove-logo', authMiddleware, (req: any, res: any) => {
+  if (!['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  (company as any).logoUrl = null;
+  company.updatedAt = new Date().toISOString();
+  return res.json({ company });
+});
+
 // ─── Task Routes ───────────────────────────────────────────────────────────────
 
 app.get('/api/tasks', authMiddleware, (req: any, res: any) => {

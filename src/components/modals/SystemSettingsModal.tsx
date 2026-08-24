@@ -47,23 +47,27 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
       return;
     }
 
-    const formData = new FormData();
-    formData.append('logo', file);
-
-    try {
-      setLoading(true);
-      const res = await apiRequest<{ logoUrl: string; company: Company }>('/settings/upload-logo', {
-        method: 'POST',
-        body: formData,
-      });
-      setLogoUrl(res.logoUrl);
-      updateCompany(res.company);
-      setMessage('Logo uploaded successfully');
-    } catch (err: any) {
-      setError(err.message || 'Failed to upload logo');
-    } finally {
-      setLoading(false);
-    }
+    // Convert to base64 data URL so we can send as JSON (Netlify Functions don't support multipart without multer)
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        setLoading(true);
+        const logoBase64 = reader.result as string;
+        const res = await apiRequest<{ logoUrl: string; company: Company }>('/settings/upload-logo', {
+          method: 'POST',
+          body: JSON.stringify({ logoBase64 }),
+        });
+        setLogoUrl(res.logoUrl);
+        updateCompany(res.company);
+        setMessage('Logo uploaded successfully');
+      } catch (err: any) {
+        setError(err.message || 'Failed to upload logo');
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.onerror = () => setError('Failed to read file');
+    reader.readAsDataURL(file);
   };
 
   const handleRemoveLogo = async () => {
