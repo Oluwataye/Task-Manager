@@ -30,7 +30,8 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
       setTagline(company.tagline || 'Track, assign, and monitor employee tasks in real-time');
       setPrimaryColor(company.primaryColor || '#123C73');
       setSecondaryColor(company.secondaryColor || '#1B4B82');
-      setLogoUrl(company.logoUrl || null);
+      const savedLogo = localStorage.getItem('company_logo');
+      setLogoUrl(savedLogo || company.logoUrl || null);
       setMessage('');
       setError('');
     }
@@ -38,7 +39,7 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -47,24 +48,37 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
       return;
     }
 
-    // Convert to base64 data URL so we can send as JSON (Netlify Functions don't support multipart without multer)
+    // Compress via Canvas → JPEG 80% quality, max 200×200px
+    // This keeps payload tiny and avoids Netlify's 1 MB body limit
     const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        setLoading(true);
-        const logoBase64 = reader.result as string;
-        const res = await apiRequest<{ logoUrl: string; company: Company }>('/settings/upload-logo', {
-          method: 'POST',
-          body: JSON.stringify({ logoBase64 }),
-        });
-        setLogoUrl(res.logoUrl);
-        updateCompany(res.company);
-        setMessage('Logo uploaded successfully');
-      } catch (err: any) {
-        setError(err.message || 'Failed to upload logo');
-      } finally {
-        setLoading(false);
-      }
+    reader.onload = (evt) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 200;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.8);
+
+        // Store in localStorage (no API call needed — avoids 1 MB Netlify limit)
+        try {
+          localStorage.setItem('company_logo', compressed);
+        } catch {
+          setError('Logo too large for local storage. Please use a smaller image.');
+          return;
+        }
+
+        setLogoUrl(compressed);
+        // Also push into auth context so sidebar/header update immediately
+        const updated = { ...(company as Company), logoUrl: compressed };
+        updateCompany(updated);
+        setMessage('Logo uploaded successfully!');
+      };
+      img.onerror = () => setError('Failed to load image. Please try another file.');
+      img.src = evt.target?.result as string;
     };
     reader.onerror = () => setError('Failed to read file');
     reader.readAsDataURL(file);
@@ -73,11 +87,17 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
   const handleRemoveLogo = async () => {
     try {
       setLoading(true);
-      const res = await apiRequest<{ company: Company }>('/settings/remove-logo', {
-        method: 'POST',
-      });
+      localStorage.removeItem('company_logo');
+      try {
+        await apiRequest<{ company: Company }>('/settings/remove-logo', {
+          method: 'POST',
+        });
+      } catch (e) {
+        // ignore server error if offline or mock
+      }
       setLogoUrl(null);
-      updateCompany(res.company);
+      const updated = { ...(company as Company), logoUrl: null };
+      updateCompany(updated);
       setMessage('Logo removed');
     } catch (err: any) {
       setError(err.message || 'Failed to remove logo');
@@ -104,7 +124,8 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({ isOpen
         }),
       });
 
-      updateCompany(res.company);
+      const currentLogo = localStorage.getItem('company_logo') || res.company.logoUrl || null;
+      updateCompany({ ...res.company, logoUrl: currentLogo });
       setMessage('System Settings saved successfully!');
       setTimeout(() => {
         onClose();

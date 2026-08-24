@@ -37,9 +37,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshUser = async () => {
     try {
       const data = await apiRequest<{ user: User & { company: Company } }>('/auth/me');
-      setUser(data.user);
-      setCompany(data.user.company);
-      applyThemeColors(data.user.company);
+      const savedLogo = localStorage.getItem('company_logo');
+      const comp = { ...data.user.company, logoUrl: savedLogo || data.user.company.logoUrl };
+      setUser({ ...data.user, company: comp });
+      setCompany(comp);
+      applyThemeColors(comp);
     } catch (err) {
       setUser(null);
       setCompany(null);
@@ -57,9 +59,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    setUser(data.user);
-    setCompany(data.user.company);
-    applyThemeColors(data.user.company);
+    const savedLogo = localStorage.getItem('company_logo');
+    const comp = { ...data.user.company, logoUrl: savedLogo || data.user.company.logoUrl };
+    setUser({ ...data.user, company: comp });
+    setCompany(comp);
+    applyThemeColors(comp);
   };
 
   const logout = async () => {
