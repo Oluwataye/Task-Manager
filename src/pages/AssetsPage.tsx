@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Wrench, Plus, ClipboardList } from 'lucide-react';
 import { Asset } from '../types';
 import { apiRequest } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 
 export const AssetsPage: React.FC = () => {
+  const { company } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [name, setName] = useState('');
   const [maintenanceType, setMaintenanceType] = useState('Routine Servicing');
@@ -71,10 +73,14 @@ export const AssetsPage: React.FC = () => {
             onChange={(e) => setMaintenanceType(e.target.value)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-white"
           >
-            <option value="Routine Servicing">Routine Servicing</option>
-            <option value="Safety Inspection">Safety Inspection</option>
-            <option value="Emergency Repair">Emergency Repair</option>
-            <option value="Preventative Care">Preventative Care</option>
+            {(company?.maintenanceTypes && company.maintenanceTypes.length > 0
+              ? company.maintenanceTypes
+              : ['Routine Servicing', 'Safety Inspection', 'Emergency Repair', 'Preventative Care', 'Quarterly Overhaul', 'Compliance Audit']
+            ).map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
           </select>
         </div>
 

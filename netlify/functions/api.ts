@@ -35,6 +35,28 @@ const company = {
   logoUrl: null,
   primaryColor: '#123C73',
   secondaryColor: '#1B4B82',
+  maintenanceTypes: [
+    'Routine Servicing',
+    'Safety Inspection',
+    'Emergency Repair',
+    'Preventative Care',
+    'Quarterly Overhaul',
+    'Compliance Audit',
+  ],
+  reportStatuses: [
+    'NOT_STARTED',
+    'IN_PROGRESS',
+    'ON_HOLD',
+    'COMPLETED',
+    'CANCELLED',
+    'UNDER_REVIEW',
+  ],
+  reportPriorities: [
+    'LOW',
+    'MEDIUM',
+    'HIGH',
+    'CRITICAL',
+  ],
   createdAt: past(30),
   updatedAt: past(1),
 };
@@ -207,17 +229,20 @@ app.get('/api/settings', authMiddleware, (req: any, res: any) => {
   return res.json({ company });
 });
 
-// PATCH company settings (name, systemName, tagline, colors)
+// PATCH company settings (name, systemName, tagline, colors, lookups)
 app.patch('/api/settings', authMiddleware, (req: any, res: any) => {
   if (!['SUPER_ADMIN', 'COMPANY_ADMIN'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
-  const { name, systemName, tagline, primaryColor, secondaryColor } = req.body;
+  const { name, systemName, tagline, primaryColor, secondaryColor, maintenanceTypes, reportStatuses, reportPriorities } = req.body;
   if (name !== undefined) company.name = name;
   if (systemName !== undefined) company.systemName = systemName;
   if (tagline !== undefined) company.tagline = tagline;
   if (primaryColor !== undefined) company.primaryColor = primaryColor;
   if (secondaryColor !== undefined) company.secondaryColor = secondaryColor;
+  if (Array.isArray(maintenanceTypes)) (company as any).maintenanceTypes = maintenanceTypes;
+  if (Array.isArray(reportStatuses)) (company as any).reportStatuses = reportStatuses;
+  if (Array.isArray(reportPriorities)) (company as any).reportPriorities = reportPriorities;
   company.updatedAt = new Date().toISOString();
   return res.json({ company });
 });

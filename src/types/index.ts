@@ -24,6 +24,9 @@ export interface Company {
   logoUrl?: string | null;
   primaryColor: string;
   secondaryColor: string;
+  maintenanceTypes?: string[];
+  reportStatuses?: string[];
+  reportPriorities?: string[];
 }
 
 export interface User {
